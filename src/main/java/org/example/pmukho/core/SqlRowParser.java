@@ -7,18 +7,17 @@ import java.util.regex.*;
 public class SqlRowParser {
     private static final Pattern VALUES_PATTERN = Pattern.compile("\\(([^()]*(?:\\([^()]*\\)[^()]*)*)\\)");
 
-    public List<String> parseInsert(String line) {
+    public List<List<String>> parseInsert(String line) {
+        List<List<String>> rows = new ArrayList<>();
+
         Matcher matcher = VALUES_PATTERN.matcher(line);
         while (matcher.find()) {
             String tuple = matcher.group(1);
 
-            /*
-             * TODO: split fields
-             * - handle edge cases with , in strings
-             */
+            rows.add(this.splitFields(tuple));
         }
 
-        return new ArrayList<String>();
+        return rows;
     }
 
     public List<String> splitFields(String tupleString) {
