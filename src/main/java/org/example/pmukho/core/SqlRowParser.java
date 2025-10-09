@@ -21,7 +21,26 @@ public class SqlRowParser {
         return new ArrayList<String>();
     }
 
-    public String[] splitFields(String tupleString) {
-        return tupleString.split(",");
+    public List<String> splitFields(String tupleString) {
+        StringBuilder currField = new StringBuilder();
+        List<String> fields = new ArrayList<>();
+        boolean inQuote = false;
+
+        for (int i = 0; i < tupleString.length(); i++) {
+            char c = tupleString.charAt(i);
+
+            if (c == ',' && !inQuote) {
+                fields.add(currField.toString());
+                currField.setLength(0);
+                continue;
+            } else if (c == '\'')
+                inQuote = !inQuote;
+
+            currField.append(c);
+        }
+
+        fields.add(currField.toString());
+
+        return fields;
     }
 }
