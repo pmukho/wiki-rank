@@ -9,11 +9,7 @@ public class Main {
 
         String gzipFile = "./data/page.sql.gz";
 
-        SqlStreamReader ssr = new SqlStreamReader();
-        try {
-            ssr.read(gzipFile);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        SqlStreamReader sqlReader = new SqlStreamReader();
+        sqlReader.read(gzipFile);
     }
 }

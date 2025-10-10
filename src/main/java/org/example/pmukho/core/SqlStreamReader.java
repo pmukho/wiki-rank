@@ -1,28 +1,32 @@
 package org.example.pmukho.core;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 public class SqlStreamReader {
 
-    public void read(String path) throws IOException {
-        InputStream fileStream = new FileInputStream(path);
-        InputStream in = new GZIPInputStream(fileStream);
-        BufferedReader br = new BufferedReader(new InputStreamReader(in));
+    public void read(String path) {
 
-        String line;
-        while ((line = br.readLine()) != null) {
-            if (!line.startsWith("INSERT INTO"))
-                continue;
+        try (InputStream fileStream = new FileInputStream(path);
+                InputStream in = path.endsWith(".gz") ? new GZIPInputStream(fileStream) : fileStream;
+                BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
 
-            /*
-             * TODO:
-             * - create parser that returns tuple as list of String
-             * - have downstream task be responsible for casting fields
-             */
+            String line;
+            SqlRowParser parser = new SqlRowParser();
+            // List<List<String>> rows = new ArrayList<>();
+            while ((line = br.readLine()) != null) {
+                if (!line.startsWith("INSERT INTO"))
+                    continue;
 
+                parser.parseInsert(line);
+            }
+
+            System.out.println("DONE READING");
+
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-
-        System.out.println("DONE READING");
     }
 }
