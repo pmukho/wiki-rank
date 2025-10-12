@@ -1,15 +1,29 @@
 package org.example.pmukho;
 
-import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
-import org.example.pmukho.core.*;
+import org.example.pmukho.parser.*;
 
 public class Main {
     public static void main(String[] args) {
 
-        String gzipFile = "./data/page.sql.gz";
+        Path gzipFile = Paths.get("./data/page.sql.gz");
 
         SqlStreamReader sqlReader = new SqlStreamReader();
-        sqlReader.read(gzipFile);
+        RowCounter rc = new RowCounter();
+        sqlReader.read(gzipFile, tuple -> rc.inc());
+
+        System.out.printf("Total count: %d\n", rc.count);
+    }
+
+    static class RowCounter {
+        long count = 0;
+
+        void inc() {
+            count++;
+            if (count % 1e6 == 0)
+                System.out.println("So far: " + count);
+        }
     }
 }
