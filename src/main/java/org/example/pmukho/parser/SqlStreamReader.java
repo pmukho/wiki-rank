@@ -10,13 +10,13 @@ import java.util.zip.GZIPInputStream;
 
 public class SqlStreamReader {
 
-    public void read(Path path, TupleHandler handler) {
+    public void read(Path path, String tableName, TupleHandler handler) {
 
         try (InputStream fileStream = Files.newInputStream(path);
                 InputStream in = path.toString().endsWith(".gz") ? new GZIPInputStream(fileStream) : fileStream;
                 BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
 
-            ParserContext parser = new ParserContext(br, handler);
+            ParserContext parser = new ParserContext(br, tableName, handler);
             parser.parse();
 
         } catch (IOException e) {
@@ -30,14 +30,22 @@ interface ParserState {
 }
 
 class ParserContext {
-    private ParserState state = new SeekInsertState();
-    StringBuilder buffer = new StringBuilder();
+    // fields used to track state and info related to state
+    private ParserState state;
+    private String currentLine;
+    private int index;
+    // fields set by constructor
     private BufferedReader reader;
     private TupleHandler handler;
+    private String tableName;
+    // fields used to hold processed input segments
+    StringBuilder buffer = new StringBuilder();
+    List<String> fields = new ArrayList<>();
 
-    ParserContext(BufferedReader reader, TupleHandler handler) {
+    ParserContext(BufferedReader reader, String tableName, TupleHandler handler) {
         this.reader = reader;
         this.handler = handler;
+        this.tableName = tableName;
     }
 
     void setState(ParserState state) {
@@ -45,101 +53,181 @@ class ParserContext {
     }
 
     void parse() throws IOException {
-        int ch;
-        while ((ch = reader.read()) != -1) {
-            state.handleChar(this, (char) ch);
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String prefix = "INSERT INTO `" + tableName + "` VALUES ";
+            String suffix = ";";
+            if (line.startsWith(prefix) && line.endsWith(suffix)) {
+                parseLine(line.substring(
+                        prefix.length(),
+                        line.length() - suffix.length()));
+            }
         }
     }
 
-    char peek() throws IOException {
-        reader.mark(1);
-        int ch = reader.read();
-        reader.reset();
-        return (char) ch;
+    void parseLine(String insertLine) throws IOException {
+        currentLine = insertLine;
+        index = 0;
+        setState(new StartState());
+
+        for (; index < currentLine.length(); index++) {
+            state.handleChar(this, insertLine.charAt(index));
+        }
     }
 
-    // only used to force a read of one character
-    void skip() throws IOException {
-        reader.read();
+    char peek() {
+        if (index >= currentLine.length()) {
+            return (char) -1;
+        }
+        return currentLine.charAt(index+1);
     }
 
     void emitTuple() {
-        String tuple = buffer.toString().trim();
-        List<String> fields = new ArrayList<>();
-
-        StringBuilder currField = new StringBuilder();
-        boolean inString = false;
-        for (int i = 1; i < tuple.length()-1; i++) {
-            char ch = tuple.charAt(i);
-
-            if (ch == '\"') {
-                inString = !inString;
-            } else if (ch == ',' && !inString) {
-                fields.add(currField.toString());
-                currField.setLength(0);
-            } else {
-                currField.append(ch);
-            }
-        }
-        fields.add(currField.toString());
-        currField.setLength(0);
-
-        handler.onTuple(fields);
-        buffer.setLength(0);
+        List<String> toEmit = new ArrayList<>();
+        for (String field : fields) 
+            toEmit.add(field);
+        fields = new ArrayList<>();
+        handler.onTuple(toEmit);
     }
 }
 
-class SeekInsertState implements ParserState {
+class StartState implements ParserState {
+
+    @Override
+    public void handleChar(ParserContext context, char ch) throws IOException {
+        if (ch == '(') {
+            context.setState(new FieldState());
+        }
+    }
+
+}
+
+class FieldState implements ParserState {
+
+    @Override
+    public void handleChar(ParserContext context, char ch) throws IOException {
+        if (ch == '\'') {
+            context.setState(new StringState());
+        } else if (ch == ',') {
+            context.fields.add(context.buffer.toString());
+            context.buffer.setLength(0);
+        } else if (ch == ')') {
+            context.fields.add(context.buffer.toString());
+            context.buffer.setLength(0);
+            context.emitTuple();
+            context.setState(new EmitState());
+        } else {
+            context.buffer.append(ch);
+        }
+    }
+
+}
+
+class StringState implements ParserState {
+
+    @Override
+    public void handleChar(ParserContext context, char ch) throws IOException {
+        // refer to link below to see special cases involving string literals
+        // https://dev.mysql.com/doc/refman/8.4/en/string-literals.html
+
+        char lookAhead = context.peek();
+        if (ch == '\\') {
+            context.setState(new EscapeState());
+        } else if (ch == '\'' && (lookAhead == ',' || lookAhead == ')')) {
+            context.setState(new FieldState());
+        } else if (ch == '\'' && lookAhead == '\'') { // MySQL uses \'\' for literal char \'
+            return; // "eat" current \'
+        } else {
+            context.buffer.append(ch);
+        }
+    }
+
+}
+
+class EscapeState implements ParserState {
 
     @Override
     public void handleChar(ParserContext context, char ch) throws IOException {
         context.buffer.append(ch);
-        if (context.buffer.length() > 20)
-            context.buffer.deleteCharAt(0);
-
-        if (context.buffer.toString().trim().toUpperCase().endsWith("VALUES")) {
-            context.setState(new BuildTupleState());
-            context.buffer.setLength(0);
-        }
+        context.setState(new StringState());
     }
+    
 }
 
-class BuildTupleState implements ParserState {
+class EmitState implements ParserState {
 
     @Override
     public void handleChar(ParserContext context, char ch) throws IOException {
-        char lookAhead = context.peek();
-        if (ch == '\'') {
-            context.buffer.append('\"');
-            context.setState(new BuildStringState());
-        } else if (ch == ')' && lookAhead == ',') { // reached end of tuple
-            context.buffer.append(')');
-            context.emitTuple();
-            context.skip();
-        } else if (ch == ')' && lookAhead == ';') {
-            context.buffer.append(')');
-            context.emitTuple();
-            context.skip();
-            context.setState(new SeekInsertState());
-        } else {
-            context.buffer.append(ch);
+        // emit should be done before transitioning to this state
+        if (ch == ',') {
+            context.setState(new StartState());
+        } else if (ch == ';') {
+            context.setState(new EndState());
         }
     }
+
 }
 
-class BuildStringState implements ParserState {
+class EndState implements ParserState {
 
     @Override
     public void handleChar(ParserContext context, char ch) throws IOException {
-        char lookAhead = context.peek();
-        if (ch == '\'' && lookAhead == '\'') { // MySQL uses '' to imitate \'
-            context.buffer.append('\'');
-            context.skip();
-        } else if (ch == '\'' && lookAhead != '\'') {
-            context.buffer.append('\"');
-            context.setState(new BuildTupleState());
-        } else {
-            context.buffer.append(ch);
-        }
+        return;
     }
+
 }
+
+// class SeekInsertState implements ParserState {
+
+// @Override
+// public void handleChar(ParserContext context, char ch) throws IOException {
+// context.buffer.append(ch);
+// if (context.buffer.length() > 50)
+// context.buffer.deleteCharAt(0);
+
+// if (context.buffer.toString().trim().toUpperCase().endsWith("VALUES")) {
+// context.setState(new BuildTupleState());
+// context.buffer.setLength(0);
+// }
+// }
+// }
+
+// class BuildTupleState implements ParserState {
+
+// @Override
+// public void handleChar(ParserContext context, char ch) throws IOException {
+// char lookAhead = context.peek();
+// if (ch == '\'') {
+// context.buffer.append('\"');
+// context.setState(new BuildStringState());
+// } else if (ch == ')' && lookAhead == ',') { // reached end of tuple
+// context.buffer.append(')');
+// context.emitTuple();
+// context.skip();
+// } else if (ch == ')' && lookAhead == ';') {
+// context.buffer.append(')');
+// context.emitTuple();
+// context.skip();
+// context.setState(new SeekInsertState());
+// } else {
+// context.buffer.append(ch);
+// }
+// }
+// }
+
+// class BuildStringState implements ParserState {
+
+// @Override
+// public void handleChar(ParserContext context, char ch) throws IOException {
+// char lookAhead = context.peek();
+// if (ch == '\'' && lookAhead == '\'') { // MySQL uses '' to imitate \'
+// context.buffer.append('\'');
+// context.skip();
+// } else if (ch == '\'' && lookAhead != '\'') {
+// context.buffer.append('\"');
+// context.setState(new BuildTupleState());
+// } else {
+// context.buffer.append(ch);
+// }
+// }
+// }

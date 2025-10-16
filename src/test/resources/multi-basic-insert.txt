@@ -1,10 +1,5 @@
-INSERT INTO `dummy` VALUES
-(0,-3,'Alice',3.14),
-(1,1,'Bob',-1.4);
+INSERT INTO `my_table` VALUES (0,-3,'Alice',3.14),(1,1,'Bob',-1.4);
 
-INSERT INTO `dummy` VALUES
-(2,-4,'Charlie',1.9);
+INSERT INTO `my_table` VALUES (2,-4,'Charlie',1.9);
 
-INSERT INTO `dummy` VALUES
-(8,21,'David',1.49),
-(100,3,'Edna',8.91123);
+INSERT INTO `my_table` VALUES (8,21,'David',1.49),(100,3,'Edna',8.91123);
