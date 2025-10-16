@@ -79,12 +79,12 @@ class ParserContext {
         if (index >= currentLine.length()) {
             return (char) -1;
         }
-        return currentLine.charAt(index+1);
+        return currentLine.charAt(index + 1);
     }
 
     void emitTuple() {
         List<String> toEmit = new ArrayList<>();
-        for (String field : fields) 
+        for (String field : fields)
             toEmit.add(field);
         fields = new ArrayList<>();
         handler.onTuple(toEmit);
@@ -151,7 +151,7 @@ class EscapeState implements ParserState {
         context.buffer.append(ch);
         context.setState(new StringState());
     }
-    
+
 }
 
 class EmitState implements ParserState {
@@ -176,58 +176,3 @@ class EndState implements ParserState {
     }
 
 }
-
-// class SeekInsertState implements ParserState {
-
-// @Override
-// public void handleChar(ParserContext context, char ch) throws IOException {
-// context.buffer.append(ch);
-// if (context.buffer.length() > 50)
-// context.buffer.deleteCharAt(0);
-
-// if (context.buffer.toString().trim().toUpperCase().endsWith("VALUES")) {
-// context.setState(new BuildTupleState());
-// context.buffer.setLength(0);
-// }
-// }
-// }
-
-// class BuildTupleState implements ParserState {
-
-// @Override
-// public void handleChar(ParserContext context, char ch) throws IOException {
-// char lookAhead = context.peek();
-// if (ch == '\'') {
-// context.buffer.append('\"');
-// context.setState(new BuildStringState());
-// } else if (ch == ')' && lookAhead == ',') { // reached end of tuple
-// context.buffer.append(')');
-// context.emitTuple();
-// context.skip();
-// } else if (ch == ')' && lookAhead == ';') {
-// context.buffer.append(')');
-// context.emitTuple();
-// context.skip();
-// context.setState(new SeekInsertState());
-// } else {
-// context.buffer.append(ch);
-// }
-// }
-// }
-
-// class BuildStringState implements ParserState {
-
-// @Override
-// public void handleChar(ParserContext context, char ch) throws IOException {
-// char lookAhead = context.peek();
-// if (ch == '\'' && lookAhead == '\'') { // MySQL uses '' to imitate \'
-// context.buffer.append('\'');
-// context.skip();
-// } else if (ch == '\'' && lookAhead != '\'') {
-// context.buffer.append('\"');
-// context.setState(new BuildTupleState());
-// } else {
-// context.buffer.append(ch);
-// }
-// }
-// }
