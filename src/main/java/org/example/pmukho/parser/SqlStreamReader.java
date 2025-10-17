@@ -6,17 +6,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
 
 public class SqlStreamReader {
 
-    public void read(Path path, String tableName, TupleHandler handler) {
+    public void read(Path path, String tableName, Consumer<List<String>> consumer) {
 
         try (InputStream fileStream = Files.newInputStream(path);
                 InputStream in = path.toString().endsWith(".gz") ? new GZIPInputStream(fileStream) : fileStream;
                 BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
 
-            ParserContext parser = new ParserContext(br, tableName, handler);
+            ParserContext parser = new ParserContext(br, tableName, consumer);
             parser.parse();
 
         } catch (IOException e) {
@@ -36,15 +37,15 @@ class ParserContext {
     private int index;
     // fields set by constructor
     private BufferedReader reader;
-    private TupleHandler handler;
+    private Consumer<List<String>> tupleConsumer;
     private String tableName;
     // fields used to hold processed input segments
     StringBuilder buffer = new StringBuilder();
     List<String> fields = new ArrayList<>();
 
-    ParserContext(BufferedReader reader, String tableName, TupleHandler handler) {
+    ParserContext(BufferedReader reader, String tableName, Consumer<List<String>> tupleConsumer) {
         this.reader = reader;
-        this.handler = handler;
+        this.tupleConsumer = tupleConsumer;
         this.tableName = tableName;
     }
 
@@ -87,7 +88,7 @@ class ParserContext {
         for (String field : fields)
             toEmit.add(field);
         fields = new ArrayList<>();
-        handler.onTuple(toEmit);
+        tupleConsumer.accept(toEmit);
     }
 }
 

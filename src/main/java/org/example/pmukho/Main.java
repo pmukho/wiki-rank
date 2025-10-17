@@ -11,22 +11,25 @@ import org.example.pmukho.parser.*;
 public class Main {
     public static void main(String[] args) {
 
-        Path gzipFile = Paths.get("./data/pagelinks.sql.gz");
+        Path gzipFile = Paths.get("./data/page.sql.gz");
 
         SqlStreamReader sqlReader = new SqlStreamReader();
         RowCounter rc = new RowCounter();
-        sqlReader.read(gzipFile, "pagelinks", tuple -> rc.inc(tuple));
+        sqlReader.read(gzipFile, "page", tuple -> rc.inc(tuple));
 
-        System.out.println("Total count: " + rc.count);
+        System.out.printf("Total count: %d, Article count: %d\n", rc.totalCount, rc.articleCount);
         System.out.println("Tuple sizes: " + rc.tupleSizes);
     }
 
     static class RowCounter {
-        long count = 0;
+        long totalCount = 0;
+        long articleCount = 0;
         Map<Integer, Long> tupleSizes = new HashMap<>();
 
         void inc(List<String> tuple) {
-            count++;
+            totalCount++;
+            if (tuple.get(1).equals("0"))
+                articleCount++;
 
             int numFields = tuple.size();
             tupleSizes.put(numFields, tupleSizes.getOrDefault(numFields, (long) 0) + 1);
