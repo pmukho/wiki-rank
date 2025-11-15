@@ -10,9 +10,9 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.zip.GZIPInputStream;
 
-public class SqlStreamReader<T> {
+public class SqlStreamReader {
 
-    public void read(Path path, String tableName, Function<List<String>, T> builder, Consumer<T> consumer) {
+    public static <T> void read(Path path, String tableName, Function<List<String>, T> builder, Consumer<T> consumer) {
 
         try (InputStream fileStream = Files.newInputStream(path);
                 InputStream in = path.toString().endsWith(".gz") ? new GZIPInputStream(fileStream) : fileStream;

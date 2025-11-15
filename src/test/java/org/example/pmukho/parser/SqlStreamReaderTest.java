@@ -23,11 +23,10 @@ public class SqlStreamReaderTest {
 
     @Test
     void read_single_basic_insert() throws URISyntaxException {
-        SqlStreamReader<Person> reader = new SqlStreamReader<>();
         Path inputFile = Paths.get(getClass().getResource("/single-basic-insert.txt").toURI());
 
         List<Person> output = new ArrayList<>();
-        reader.read(inputFile, "my_table", mapper, record -> {
+        SqlStreamReader.read(inputFile, "my_table", mapper, record -> {
             output.add(record);
         });
 
@@ -40,11 +39,10 @@ public class SqlStreamReaderTest {
 
     @Test
     void read_multi_basic_insert() throws URISyntaxException {
-        SqlStreamReader<Person> reader = new SqlStreamReader<>();
         Path inputFile = Paths.get(getClass().getResource("/multi-basic-insert.txt").toURI());
 
         List<Person> output = new ArrayList<>();
-        reader.read(inputFile, "my_table", mapper, tuple -> {
+        SqlStreamReader.read(inputFile, "my_table", mapper, tuple -> {
             output.add(tuple);
         });
 
@@ -60,11 +58,10 @@ public class SqlStreamReaderTest {
 
     @Test
     void read_escape_single_quote_insert() throws URISyntaxException {
-        SqlStreamReader<Person> reader = new SqlStreamReader<>();
         Path inputFile = Paths.get(getClass().getResource("/escape-single-quote-insert.txt").toURI());
 
         List<Person> output = new ArrayList<>();
-        reader.read(inputFile, "my_table", mapper, tuple -> {
+        SqlStreamReader.read(inputFile, "my_table", mapper, tuple -> {
             output.add(tuple);
         });
 
@@ -79,11 +76,10 @@ public class SqlStreamReaderTest {
 
     @Test
     void read_parentheses_insert() throws URISyntaxException {
-        SqlStreamReader<Person> reader = new SqlStreamReader<>();
         Path inputFile = Paths.get(getClass().getResource("/parentheses-insert.txt").toURI());
 
         List<Person> output = new ArrayList<>();
-        reader.read(inputFile, "my_table", mapper, tuple -> {
+        SqlStreamReader.read(inputFile, "my_table", mapper, tuple -> {
             output.add(tuple);
         });
 
