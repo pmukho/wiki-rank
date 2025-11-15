@@ -1,5 +1,8 @@
 package org.example.pmukho.processing;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,27 +14,25 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.example.pmukho.parser.Page;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
-import org.rocksdb.WriteBatch;
-import org.rocksdb.WriteOptions;
+
+import it.unimi.dsi.fastutil.ints.IntSet;
 
 public class PageBatchProcessor implements Consumer<Page>, AutoCloseable {
-    private final RocksDB db;
+    private final IntSet pageIds;
+    private final FileChannel out;
     private final int batchSize;
     private final BlockingQueue<Page> queue;
-    private static final Page POISON = new Page(-1, -1, "<POISON>", false);
+    private static final Page POISON = new Page(-1, 0, "<POISON>", false);
     private final ExecutorService executor;
+    private final ByteBuffer buffer;
 
-    static {
-        RocksDB.loadLibrary();
-    }
-
-    public PageBatchProcessor(RocksDB db, int batchSize) {
-        this.db = db;
+    public PageBatchProcessor(IntSet pageIds, FileChannel out, int batchSize) {
+        this.pageIds = pageIds;
+        this.out = out;
         this.batchSize = batchSize;
         this.queue = new LinkedBlockingQueue<>();
         this.executor = Executors.newSingleThreadExecutor();
+        this.buffer = ByteBuffer.allocate(4*1024*1024);
 
         executor.submit(this::loopBatch);
     }
@@ -50,44 +51,57 @@ public class PageBatchProcessor implements Consumer<Page>, AutoCloseable {
 
     private void loopBatch() {
         try {
+            List<Page> batch = new ArrayList<>();
+
             while (true) {
-                List<Page> batch = new ArrayList<>();
                 Page p = queue.take();
 
-                if (p == PageBatchProcessor.POISON)
+                if (p == PageBatchProcessor.POISON) {
+                    if (!batch.isEmpty()) {
+                        writeBatch(batch);
+                    }
                     break;
+                }
 
                 batch.add(p);
                 queue.drainTo(batch, batchSize);
-
-                writeBatchToDB(batch);
+                writeBatch(batch);
             }
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
             e.printStackTrace();
         }
-
     }
 
-    private void writeBatchToDB(List<Page> batch) {
-        try (WriteBatch wb = new WriteBatch();
-                WriteOptions writeOptions = new WriteOptions()) {
-            for (Page p : batch) {
-                int id = p.id();
-                byte[] key = new byte[4];
-                key[0] = (byte) ((id >> 24) & 0xFF);
-                key[1] = (byte) ((id >> 16) & 0xFF);
-                key[2] = (byte) ((id >> 8) & 0xFF);
-                key[3] = (byte) (id & 0xFF);
+    private void writeBatch(List<Page> batch) throws IOException {
+        /*
+         * TODO:
+         * write id, title pairs to output channel
+         */
+        for (Page p : batch) {
+            int id = p.id();
+            pageIds.add(id);
 
-                byte[] value = p.title().getBytes(StandardCharsets.UTF_8);
-
-                wb.put(key, value);
+            byte[] title = p.title().getBytes(StandardCharsets.UTF_8);
+            int needed = 4 + 4 + title.length;
+            if (needed > buffer.remaining()) {
+                flushBuffer();
             }
 
-            db.write(writeOptions, wb);
-        } catch (RocksDBException e) {
-            e.printStackTrace();
+            buffer.putInt(id);
+            buffer.putInt(title.length);
+            buffer.put(title);
         }
+        batch.clear();
+    }
+
+    private void flushBuffer() throws IOException {
+        buffer.flip();
+        while (buffer.hasRemaining()) {
+            out.write(buffer);
+        }
+        buffer.clear();
     }
 
     @Override
